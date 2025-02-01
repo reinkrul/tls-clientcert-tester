@@ -37,12 +37,28 @@ func startServer(addr string, pemFile string) error {
 	if !strings.Contains(addr, ":") {
 		addr = ":" + addr
 	}
+
+	printLock := &sync.Mutex{}
+	stdoutWriter := bufio.NewWriter(os.Stdout)
+	echo := func(msg string, args ...interface{}) {
+		printLock.Lock()
+		defer printLock.Unlock()
+		_, _ = stdoutWriter.Write([]byte(fmt.Sprintf(msg, args...) + "\n"))
+		_ = stdoutWriter.Flush()
+	}
+
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 	defer ln.Close()
-	http.DefaultServeMux.HandleFunc("GET /", func(writer http.ResponseWriter, request *http.Request) {
+	http.DefaultServeMux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		var headers []string
+		for headerName, headerValue := range request.Header {
+			headers = append(headers, fmt.Sprintf("%s=%s", headerName, strings.Join(headerValue, ", ")))
+		}
+		echo("received request %s %s, headers: %s", request.Method, request.URL.Path, strings.Join(headers, ", "))
+
 		writer.WriteHeader(200)
 		_, _ = writer.Write([]byte("OK"))
 	})
@@ -62,15 +78,6 @@ func startServer(addr string, pemFile string) error {
 			return err
 		}
 		cert = &lCert
-	}
-
-	printLock := &sync.Mutex{}
-	stdoutWriter := bufio.NewWriter(os.Stdout)
-	echo := func(msg string, args ...interface{}) {
-		printLock.Lock()
-		defer printLock.Unlock()
-		_, _ = stdoutWriter.Write([]byte(fmt.Sprintf(msg, args...) + "\n"))
-		_ = stdoutWriter.Flush()
 	}
 
 	srv := http.Server{
